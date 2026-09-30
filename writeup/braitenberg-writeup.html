@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Braitenberg Vehicles</title>
+<style>
+  @page { size: A4; margin: 2.2cm 2.3cm; }
+  body { font-family: "Times New Roman", Georgia, serif; font-size: 11.5pt; line-height: 1.45; color: #111; max-width: 17cm; margin: 0 auto; }
+  h1.title { font-size: 20pt; text-align: center; margin: 0 0 4pt; }
+  .authors { text-align: center; margin-bottom: 18pt; color: #333; }
+  h1 { font-size: 14.5pt; margin: 18pt 0 6pt; }
+  h2 { font-size: 12pt; margin: 12pt 0 4pt; }
+  p { margin: 0 0 7pt; text-align: justify; }
+  code { font-family: Menlo, Consolas, monospace; font-size: 9.5pt; background: #f2f2f2; padding: 0 2px; }
+  pre { font-family: Menlo, Consolas, monospace; font-size: 8.8pt; background: #f5f5f5; border: 1px solid #ddd; padding: 6pt 8pt; line-height: 1.35; white-space: pre-wrap; }
+  table { border-collapse: collapse; width: 100%; font-size: 10pt; margin: 6pt 0 4pt; }
+  th, td { border: 1px solid #999; padding: 3pt 5pt; text-align: left; vertical-align: top; }
+  th { background: #eee; }
+  figure { margin: 10pt 0; text-align: center; page-break-inside: avoid; }
+  figure img { max-width: 100%; }
+  figcaption, .tcap { font-size: 9.8pt; color: #333; text-align: left; margin-top: 3pt; }
+  .tcap { margin-bottom: 8pt; }
+  ul { margin: 0 0 7pt; padding-left: 18pt; }
+  li { margin-bottom: 3pt; }
+</style>
+</head>
+<body>
+
+<h1 class="title">Braitenberg Vehicles in a Browser Simulator</h1>
+
+<h1>1. How the drop-down choice reaches <code>loadVehicle()</code></h1>
+<p>In <code>BraitenbergABCD.html</code> the drop-down is a <code>&lt;select id="vehicleSelectBox"&gt;</code> with the options A, B, C and D. The select element itself has no event handler, so choosing an option does nothing yet. Next to it is a <em>Load</em> button with <code>onclick="javascript:loadVehicle();"</code>, which calls the function <strong>without any argument</strong>.</p>
+<p>The choice is therefore not passed as a parameter. Instead, <code>loadVehicle()</code> reads it from the page (the DOM) when it runs:</p>
+<pre>switch(document.getElementById("vehicleSelectBox").selectedIndex) { ... }</pre>
+<p><code>selectedIndex</code> is the zero-based position of the selected option, so A = 0, B = 1, C = 2 and D = 3. The <code>switch</code> statement uses this number to pick the configuration. In the original file only <code>case 0</code> existed; every other index fell through to the <code>default</code> branch, which opens a prompt where the vehicle's JSON description can be edited by hand. We kept that branch as a fallback.</p>
+<p>The new settings are written into <code>simulationInfo.bayVehicle</code>, which is the vehicle currently shown in the "bay" at the bottom left. This is the last vehicle that was clicked or dragged (vehicle 1 by default). After the switch, <code>loadBay()</code> redraws the bay and updates the sensor controls. So when there are several vehicles in the arena, you first click the one you want to change and then press Load.</p>
+
+<h1>2. Manipulating the sensor locations</h1>
+<p>A sensor's <code>position</code> is an angle measured from the front of the vehicle. Because the y-axis of the HTML canvas points downwards, a negative angle lies on the vehicle's <em>left</em> side and a positive angle on its right side. The sensors sit on the rim of the body (radius 15 px), so the sideways distance between two sensors at ±θ is 2 · 15 · sin θ. This is about 21 px at ±π/4 but only 5.9 px at ±π/16.</p>
+<p>The sensors are not directional. Each one simply measures the light intensity at its own position, and that intensity falls off with distance to the bulb (roughly as 1/distance in the simulator). The only reason the left and right sensor read different values is that one of them is a bit closer to the light. The vehicle's own body also casts a small shadow.</p>
+<p><strong>Prediction.</strong> If the sensors are moved closer together (±π/16), both sensors are at almost the same distance from the light. The difference between the two motor signals, which is what makes the vehicle turn, becomes much smaller. We expected the vehicle to keep the same type of behaviour (the wiring does not change) but to steer much more weakly. It would drive in straighter lines and react later, and it could miss a light that is off to the side.</p>
+<p><strong>Observations.</strong> We tested this with the default (aggression) vehicle, both by dragging the sensors in the bay and by recording trajectories. In the controlled test the vehicle starts driving straight ahead with the light 120 px to the side of its path (Figure 1, Table 1).</p>
+<table>
+  <tr><th>Sensor positions</th><th>Sideways separation</th><th>Heading change in first 15 steps</th><th>Steps until the light is reached</th></tr>
+  <tr><td>±π/2</td><td>30 px</td><td>30°</td><td>114</td></tr>
+  <tr><td>±π/4 (default)</td><td>21 px</td><td>5°</td><td>81</td></tr>
+  <tr><td>±π/8</td><td>11 px</td><td>2°</td><td>115</td></tr>
+  <tr><td>±π/16</td><td>5.9 px</td><td>1°</td><td>195 (misses the first time, circles back)</td></tr>
+  <tr><td>±π/32</td><td>2.9 px</td><td>0°</td><td>not reached within 260 steps (circles around it)</td></tr>
+</table>
+<div class="tcap">Table 1. Aggression vehicle with the light 120 px to the side of its initial path.</div>
+<figure>
+  <img src="../figures/fig1_sensor_positions.png" alt="Trajectories of the aggression vehicle for four sensor placements" style="width:78%">
+  <figcaption>Figure 1. Paths of the aggression vehicle for different sensor positions. The black dot is the start position.</figcaption>
+</figure>
+<p>This matched our prediction. With the sensors at ±π/16 the vehicle hardly turned at first, drove past the light, and only reached it after a wide loop. At ±π/32 it kept circling around the light without hitting it. Placing the sensors far apart (±π/2) gave the strongest steering; the vehicle turned sharply towards the light right away. It was not faster than the default placement, though, because the hard turns cost forward progress, and after passing the light it looped back to it again. Two more things we noticed while dragging sensors:</p>
+<ul>
+  <li>Sensors near the back of the vehicle (±3π/4) still work, since the steering only depends on which sensor is closer to the light.</li>
+  <li>If the two sensors are dragged past each other (the "left" sensor ends up on the right side), the crossed wires effectively become uncrossed. The aggression vehicle then behaves exactly like the fear vehicle; in our recordings the trajectories were identical.</li>
+</ul>
+
+<h1>3. Implementing the four vehicles</h1>
+<p>The default vehicle has its left sensor (−π/4) connected to the <em>right</em> motor and its right sensor (+π/4) to the <em>left</em> motor, with a positive (excitatory) strength of 1. When the light is on its left, the right wheel turns faster, so the vehicle turns left, towards the light, and speeds up as it gets closer. This is Braitenberg's vehicle <strong>2b, aggression</strong> (the code comment also labels it this way). It drives straight into the light at full speed.</p>
+<p>In the code, a sensor's <code>type</code> is the motor it drives (<code>"left"</code> or <code>"right"</code>), not the side it is on. The sign of <code>strength</code> sets whether the connection is excitatory (+) or inhibitory (−), and <code>baseValues</code> gives the motor speeds when there is no light. We added cases 1–3 to <code>loadVehicle()</code> in the same style as case 0. We also gave each type its own colour so they can be told apart with several vehicles in the arena.</p>
+<table>
+  <tr><th>Option</th><th>Vehicle</th><th>Wiring</th><th>Connection</th><th>Base speed</th><th>Strength</th><th>Colour</th></tr>
+  <tr><td>A</td><td>Aggression (2b)</td><td>crossed</td><td>excitatory</td><td>1</td><td>+1</td><td>red</td></tr>
+  <tr><td>B</td><td>Love (3a)</td><td>uncrossed</td><td>inhibitory</td><td>3</td><td>−0.5</td><td>magenta</td></tr>
+  <tr><td>C</td><td>Exploration (3b)</td><td>crossed</td><td>inhibitory</td><td>3</td><td>−0.5</td><td>green</td></tr>
+  <tr><td>D</td><td>Fear (2a)</td><td>uncrossed</td><td>excitatory</td><td>1</td><td>+1</td><td>blue</td></tr>
+</table>
+<div class="tcap">Table 2. Architectures implemented in <code>loadVehicle()</code>. All sensors sit at ±π/4. "Crossed" means the left sensor drives the right motor and vice versa.</div>
+<p>For example, the love vehicle is implemented as:</p>
+<pre>case 1: //Love (3a): uncrossed, inhibitory
+  simulationInfo.bayVehicle.vehicle.color = "magenta";
+  simulationInfo.bayVehicle.vehicle.baseValues = {left: 3, right: 3, bulb: 0};
+  simulationInfo.bayVehicle.vehicle.sensors = [
+    {position: -Math.PI/4, type: "left", strength: -0.5},
+    {position: Math.PI/4, type: "right", strength: -0.5}];
+  break;</pre>
+
+<h2>Choosing the parameters of the inhibitory vehicles</h2>
+<p>Fear only needed the wires uncrossed. For love and exploration our first attempt was to copy the default values and flip the sign (base speed 1, strength −1). That did not work: the vehicle immediately drove <em>backwards</em>, away from the light. Reading <code>moveVehicle()</code> explained why. Each sensor adds <code>strength × light × bulbPower</code> to its motor, and <code>bulbPower</code> (5) is applied twice (also in <code>getSensorResponse()</code>), so the effective gain is 25. Near a single bulb the light value is about 10/d (d = distance in pixels, capped at 1). At 200 px this already gives an inhibition of 1.25, which is more than the base speed of 1, so the motor speeds became negative.</p>
+<p>An inhibitory vehicle can only slow down, so it needs a base speed that is larger than the inhibition it gets far from the light. The love vehicle comes to rest where the inhibition equals the base speed, i.e. at a sensor distance of d = 250 · |strength| / base. With base 3 and strength −0.5 this predicts 42 px from sensor to bulb. The sensors are about 11 px in front of the vehicle's centre, which gives roughly 53 px centre to centre, close to the 50 px we measured. We also tried other settings (base 1 or 2 with strength −0.5 stopped at 134 px and 71 px), and those matched the formula too. We chose base 3 / −0.5 because the vehicle then stops close to the light but does not touch it, and moves at a speed comparable to the other vehicles. We used the same values for exploration.</p>
+
+<h2>Observed behaviour</h2>
+<figure>
+  <img src="../figures/fig2_vehicle_trajectories.png" alt="Trajectories of the four vehicle types from five start positions" style="width:100%">
+  <figcaption>Figure 2. Paths of the four vehicles from the same five start positions with one light. The red start in each panel points straight at the light.</figcaption>
+</figure>
+<ul>
+  <li><strong>A, Aggression:</strong> turns towards the light and speeds up, hitting it at maximum speed from every start position. The light is not a physical obstacle in the simulator, so the vehicle drives through it and then carries on to the wall.</li>
+  <li><strong>B, Love:</strong> turns towards the light while slowing down, and comes to a complete stop about 50 px from it, facing it. It stays there until it or the light is moved.</li>
+  <li><strong>C, Exploration:</strong> slows down as it approaches the light and turns away from it (a heading change of 50–90°), then speeds up again and drives off. In theory it should then go on to "explore" other lights, but in this arena it usually ends up against a wall. Even with three lights it was pushed away from all of them and stayed at the edge of the arena.</li>
+  <li><strong>D, Fear:</strong> turns away from the light and speeds up the closer it is, so it moves away quickly. One exception (red path): when it drives straight at the light, both sensors receive the same amount of light, so there is nothing to turn it and it rushes through the light at full speed. This is an unstable balance; with even a small offset it swerves away.</li>
+</ul>
+
+<h1>4. Notes</h1>
+<p><strong>Things that tripped us up.</strong></p>
+<ul>
+  <li><em>Left or right?</em> It took some time to figure out which sensor is the left one. Because the canvas y-axis points down, the negative angle is on the left. The colours in the bay helped us confirm it: a black sensor drives the right motor and a white one drives the left motor.</li>
+  <li><em>Naming.</em> The field <code>type</code> names the motor a sensor is connected to, not where the sensor is. Once we understood that, crossed versus uncrossed wiring was just a matter of swapping <code>"left"</code> and <code>"right"</code>.</li>
+  <li><em>Inhibitory vehicles.</em> Flipping the sign of the strength was not enough; the vehicles drove backwards (Section 3). We had to work out the scaling in <code>moveVehicle()</code> to choose sensible base speeds.</li>
+  <li><em>Load only changes one vehicle.</em> With several vehicles, pressing Load only changes the vehicle in the bay, so each vehicle has to be clicked first.</li>
+  <li><em>Walls.</em> The arena clamps the vehicle's position, so vehicles that leave the light (aggression, fear, exploration) end up pushing against a wall forever. For the exploration vehicle this hides its intended behaviour, because it cannot turn around and find the next light. This is a limit of the simulator rather than of the vehicles.</li>
+  <li><em>Measuring behaviour.</em> Judging "how fast it turns" by eye was hard, so besides using the web page we ran the simulator's own <code>moveVehicle()</code> code in Node.js and recorded the vehicle positions. The figures and numbers in this write-up come from those recordings.</li>
+</ul>
+<p><strong>What we found interesting.</strong> It is striking how different the behaviours look even though the vehicles differ only in two things: whether the wires cross and the sign of the connection. Without knowing the wiring, it is tempting to describe the vehicles as "angry", "shy" or "in love", while they are just two sensors and two motors. The sensor experiment showed the same idea from another angle: moving the sensors across the midline turns aggression into fear without touching any code. The fear vehicle driving head-on into the light was also a nice example of how a purely reactive system can end up in a situation where its behaviour looks like the opposite of its "character".</p>
+<p><strong>What we found difficult.</strong> The motion code in <code>moveVehicle()</code> (turning along a circle defined by the two wheel speeds) and the lighting code were hard to read at first, and we needed them to understand why our first love and exploration vehicles drove backwards. Once we derived the stopping-distance formula and saw it match the measurements, tuning the parameters became easy.</p>
+
+</body>
+</html>
